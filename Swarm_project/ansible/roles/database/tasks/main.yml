@@ -1,0 +1,30 @@
+---
+# 1. Installer pip pour gérer Docker via Python (si pas fait dans common)
+#- name: Install pip
+#  apt:
+#    name: python3-pip
+#    state: present
+
+# 2. Créer le dossier pour les données persistantes sur l'hôte
+- name: Create MariaDB data directory
+  file:
+    path: /srv/mariadb/data
+    state: directory
+    mode: '0755'
+
+# 3. Lancer le conteneur MariaDB
+- name: Start MariaDB container
+  docker_container:
+    name: mariadb
+    image: mariadb:10.5
+    state: started
+    restart_policy: always
+    ports:
+      - "3306:3306"
+    volumes:
+      - /srv/mariadb/data:/var/lib/mysql
+    env:
+      MYSQL_ROOT_PASSWORD: "rootpassword"
+      MYSQL_DATABASE: "app_db"
+      MYSQL_USER: "app_user"
+      MYSQL_PASSWORD: "app_password"

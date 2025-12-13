@@ -1,0 +1,13 @@
+http:
+  routers:
+    harbor:
+      rule: Host(`harbor.local`)
+      entryPoints:
+        - web
+      service: harbor
+
+  services:
+    harbor:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.56.10"

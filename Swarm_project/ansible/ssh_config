@@ -1,0 +1,56 @@
+Host swarm-mgr1
+  HostName 127.0.0.1
+  User vagrant
+  Port 2202
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host swarm-node1
+  HostName 127.0.0.1
+  User vagrant
+  Port 2203
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host swarm-node2
+  HostName 127.0.0.1
+  User vagrant
+  Port 2204
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host dbSrv1
+  HostName 127.0.0.1
+  User vagrant
+  Port 2205
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
+  IdentityFile /home/james/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+

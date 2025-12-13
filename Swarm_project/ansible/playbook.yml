@@ -1,0 +1,52 @@
+---
+# ==========================================
+# 1. Configuration commune (Docker, etc.)
+# ==========================================
+- hosts: all
+  become: true
+  roles:
+    - common
+
+
+# ==========================================
+# 2. Configuration Database (MariaDB hors Swarm)
+# ==========================================
+- hosts: database
+  become: true
+  roles:
+    - database
+
+
+# ==========================================
+# 3. Configuration Swarm Manager (Init cluster)
+# ==========================================
+- hosts: managers
+  become: true
+  roles:
+    - swarm-manager
+
+
+# ==========================================
+# 4. Configuration Swarm Workers (Join cluster)
+# ==========================================
+- hosts: workers
+  become: true
+  roles:
+    - swarm-worker
+
+
+# ==========================================
+# 5. Deploy Traefik config (sur le manager)
+# ==========================================
+- hosts: managers
+  become: true
+  tasks:
+    - name: Create Traefik app config from template
+      template:
+        src: traefik-app.yml.j2
+        dest: /vagrant/traefik-extra/app.yml
+        mode: '0644'
+      vars:
+        app_domain: app.local
+        app_service_name: app_app
+        app_port: 80

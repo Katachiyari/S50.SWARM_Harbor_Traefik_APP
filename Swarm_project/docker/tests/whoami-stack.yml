@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  whoami:
+    image: traefik/whoami
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.whoami.entrypoints=traefik"
+    deploy:
+      replicas: 1
+    networks:
+      - traefik-net
+
+networks:
+  traefik-net:
+    external: true

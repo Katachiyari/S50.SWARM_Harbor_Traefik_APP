@@ -1,0 +1,37 @@
+---
+# 1. Initialiser le Swarm (seulement si pas déjà fait)
+- name: Init Docker Swarm
+  docker_swarm:
+    state: present
+    advertise_addr: 192.168.56.121
+  register: swarm_info
+
+# 2. Récupérer le token Worker
+- name: Get Worker Join Token
+  command: docker swarm join-token worker -q
+  register: worker_token_cmd
+  changed_when: false
+
+# 3. Stocker le token dans un "dummy host" pour que les workers puissent le lire
+- name: Set Worker Token Fact
+  add_host:
+    name: "swarm_token_holder"
+    token: "{{ worker_token_cmd.stdout }}"
+
+# 4. Create Traefik extra directory
+- name: Create Traefik extra directory
+  file:
+    path: /vagrant/traefik-extra
+    state: directory
+    mode: '0755'
+
+# 5. Create Traefik app config from template
+- name: Create Traefik app config from template
+  template:
+    src: traefik-app.yml.j2
+    dest: /vagrant/traefik-extra/app.yml
+    mode: '0644'
+  vars:
+    app_domain: app.local
+    app_service_name: app_app
+    app_port: 80

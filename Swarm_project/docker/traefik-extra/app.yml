@@ -1,0 +1,13 @@
+http:
+  routers:
+    app:
+      rule: "Host(`app.local`)"
+      service: app
+      entryPoints:
+        - web
+  
+  services:
+    app:
+      loadBalancer:
+        servers:
+          - url: "http://app_app:80"

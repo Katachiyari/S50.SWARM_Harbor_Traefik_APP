@@ -1,0 +1,8 @@
+---
+# 1. Rejoindre le Swarm en utilisant le token stocké
+- name: Join Docker Swarm as Worker
+  docker_swarm:
+    state: join
+    advertise_addr: "{{ ansible_host }}"
+    join_token: "{{ hostvars['swarm_token_holder']['token'] }}"
+    remote_addrs: [ '192.168.56.121:2377' ]
