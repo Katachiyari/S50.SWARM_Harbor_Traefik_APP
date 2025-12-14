@@ -1,18 +1,18 @@
 ---
-# 1. Installer pip pour gérer Docker via Python (si pas fait dans common)
-#- name: Install pip
-#  apt:
-#    name: python3-pip
-#    state: present
+# ============================================================
+# Rôle : Database (MariaDB)
+# Déploie MariaDB + importe le schéma SQL
+# ============================================================
 
-# 2. Créer le dossier pour les données persistantes sur l'hôte
+# --- ÉTAPE 1 : Créer les répertoires de données ---
 - name: Create MariaDB data directory
   file:
-    path: /srv/mariadb/data
+    path: "{{ db_data_dir }}"
     state: directory
     mode: '0755'
+  tags: [database, setup]
 
-# 3. Lancer le conteneur MariaDB
+# --- ÉTAPE 2 : Lancer le conteneur MariaDB ---
 - name: Start MariaDB container
   docker_container:
     name: mariadb
@@ -20,11 +20,92 @@
     state: started
     restart_policy: always
     ports:
-      - "3306:3306"
+      - "{{ db_port }}:{{ db_port }}"
     volumes:
-      - /srv/mariadb/data:/var/lib/mysql
+      - "{{ db_data_dir }}:/var/lib/mysql"
     env:
-      MYSQL_ROOT_PASSWORD: "rootpassword"
-      MYSQL_DATABASE: "app_db"
-      MYSQL_USER: "app_user"
-      MYSQL_PASSWORD: "app_password"
+      MYSQL_ROOT_PASSWORD: "{{ db_root_password }}"
+      MYSQL_DATABASE: "{{ db_name }}"
+      MYSQL_USER: "{{ db_user }}"
+      MYSQL_PASSWORD: "{{ db_password }}"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  register: mariadb_container
+  tags: [database, deploy]
+
+# --- ÉTAPE 3 : Attendre que MariaDB soit prêt ---
+- name: Wait for MariaDB to be ready
+  pause:
+    seconds: 15
+  tags: [database, deploy]
+
+# --- ÉTAPE 4 : Vérifier la connexion à la base ---
+- name: Test MariaDB connection
+  shell: |
+    docker exec mariadb mysql \
+      -h 127.0.0.1 \
+      -u {{ db_user }} \
+      -p{{ db_password }} \
+      -e "SELECT 1" \
+      {{ db_name }}
+  register: db_test
+  retries: 3
+  delay: 5
+  until: db_test.rc == 0
+  tags: [database, validate]
+
+- name: Confirm MariaDB is accessible
+  debug:
+    msg: "✓ MariaDB is running and accessible"
+  tags: [database, validate]
+
+# --- ÉTAPE 5 : Vérifier si le schéma est déjà importé ---
+- name: Check if schema already imported
+  stat:
+    path: "{{ db_data_dir }}/.covoit_schema_done"
+  register: schema_flag
+  tags: [database, schema]
+
+# --- ÉTAPE 6 : Importer le schéma SQL (une seule fois) ---
+- name: Import SQL schema
+  shell: |
+    cat {{ sql_schema_path }} | docker exec -i mariadb mysql \
+      -h 127.0.0.1 \
+      -u root \
+      -p{{ db_root_password }} \
+      {{ db_name }}
+  when:
+    - db_test.rc == 0
+    - not schema_flag.stat.exists
+  register: schema_import
+  tags: [database, schema]
+
+- name: Mark schema as imported
+  file:
+    path: "{{ db_data_dir }}/.covoit_schema_done"
+    state: touch
+  when:
+    - schema_import is defined
+
+  tags: [database, schema]
+
+# --- ÉTAPE 7 : Vérifier que les tables existent ---
+- name: Verify database tables
+  shell: |
+    docker exec mariadb mysql \
+      -h 127.0.0.1 \
+      -u {{ db_user }} \
+      -p{{ db_password }} \
+      {{ db_name }} \
+      -e "SHOW TABLES;"
+  register: tables_check
+  changed_when: false
+  tags: [database, validate]
+
+- name: Display database tables
+  debug:
+    msg: "{{ tables_check.stdout_lines }}"
+  tags: [database, validate]

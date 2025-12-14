@@ -4,8 +4,9 @@ http:
       rule: "Host(`app.local`)"
       service: app
       entryPoints:
-        - web
-  
+        - websecure
+      tls: {}
+
   services:
     app:
       loadBalancer:

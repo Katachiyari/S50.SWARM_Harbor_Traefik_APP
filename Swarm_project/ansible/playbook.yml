@@ -1,52 +1,124 @@
 ---
-# ==========================================
-# 1. Configuration commune (Docker, etc.)
-# ==========================================
-- hosts: all
+# ============================================================
+# Playbook Principal - Docker Swarm Infrastructure
+# Orchestre tous les rôles dans l'ordre correct
+# ============================================================
+
+# --- PHASE 1 : Setup Commun (tous les hôtes) ---
+- name: Common setup on all hosts
+  hosts: all
   become: true
+  gather_facts: true
+  tags: [always]
   roles:
     - common
 
 
-# ==========================================
-# 2. Configuration Database (MariaDB hors Swarm)
-# ==========================================
-- hosts: database
+# --- PHASE 2 : Database (dbSrv1 seulement) ---
+- name: Setup Database Server
+  hosts: database
   become: true
+  gather_facts: false
+  tags: [database]
   roles:
     - database
 
 
-# ==========================================
-# 3. Configuration Swarm Manager (Init cluster)
-# ==========================================
-- hosts: managers
+# --- PHASE 3 : Swarm Manager (swarm-mgr1) ---
+- name: Initialize Docker Swarm Manager
+  hosts: managers
   become: true
+  gather_facts: false
+  tags: [swarm, manager]
   roles:
     - swarm-manager
 
 
-# ==========================================
-# 4. Configuration Swarm Workers (Join cluster)
-# ==========================================
-- hosts: workers
+# --- PHASE 4 : Swarm Workers (swarm-node1, swarm-node2) ---
+# ⚠️ Important : Cette phase s'exécute APRÈS le manager !
+- name: Join Swarm Workers
+  hosts: workers
   become: true
-  roles:
-    - swarm-worker
-
-
-# ==========================================
-# 5. Deploy Traefik config (sur le manager)
-# ==========================================
-- hosts: managers
-  become: true
+  gather_facts: false
+  tags: [swarm, worker]
   tasks:
-    - name: Create Traefik app config from template
-      template:
-        src: traefik-app.yml.j2
-        dest: /vagrant/traefik-extra/app.yml
-        mode: '0644'
-      vars:
-        app_domain: app.local
-        app_service_name: app_app
-        app_port: 80
+    # Attendre que le manager soit prêt
+    - name: Wait for Swarm manager to be ready
+      pause:
+        seconds: 10
+      tags: [swarm, worker]
+    
+    # Récupérer le token depuis le manager (via delegate)
+    - name: Get worker token from manager
+      command: docker swarm join-token worker -q
+      delegate_to: swarm-mgr1
+      register: worker_token_result
+      changed_when: false
+      tags: [swarm, worker]
+    
+    - name: Set worker token variable
+      set_fact:
+        worker_token: "{{ worker_token_result.stdout }}"
+      tags: [swarm, worker]
+    
+    # Joindre le Swarm
+    - name: Join Docker Swarm as Worker
+      docker_swarm:
+        state: join
+        advertise_addr: "{{ ansible_host }}"
+        join_token: "{{ worker_token }}"
+        remote_addrs: ["{{ manager_ip }}:2377"]
+      tags: [swarm, worker]
+    
+    - name: Confirm worker joined
+      debug:
+        msg: "✓ Worker {{ inventory_hostname }} joined the Swarm cluster"
+      tags: [swarm, worker]
+
+# --- PHASE 5 : Validation Finale ---
+- name: Validate Swarm Cluster
+  hosts: managers
+  become: true
+  gather_facts: false
+  tags: [validation]
+  tasks:
+    - name: Display Swarm nodes
+      command: docker node ls
+      register: nodes
+      changed_when: false
+
+    - name: Show cluster status
+      debug:
+        msg: "{{ nodes.stdout_lines }}"
+
+    - name: Display all services
+      command: docker service ls
+      register: services
+      changed_when: false
+
+    - name: Show services status
+      debug:
+        msg: "{{ services.stdout_lines }}"
+
+    - name: Check Traefik service health
+      shell: docker service ls --filter name=traefik_traefik -q | wc -l
+      register: traefik_check
+      changed_when: false
+
+    - name: Confirm deployment success
+      debug:
+        msg: |
+          ✅ Deployment Complete!
+          
+          Access Points:
+            • App:       https://{{ domain_local }}/
+            • Traefik:   https://{{ domain_traefik }}/
+            • Portainer: https://{{ domain_portainer }}/
+          
+          Database:
+            • Host:     {{ db_ip }}:{{ db_port }}
+            • User:     {{ db_user }}
+            • Database: {{ db_name }}
+          
+          Swarm Cluster: {{ nodes.stdout_lines | length }} nodes
+      when: traefik_check.stdout | int > 0

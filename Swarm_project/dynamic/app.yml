@@ -4,10 +4,11 @@ http:
       rule: "Host(`app.local`)"
       service: app
       entryPoints:
-        - web
-  
+        - websecure
+      tls: {}
+
   services:
     app:
       loadBalancer:
         servers:
-          - url: "http://app_app:80"
+          - url: "http://covoit_app:80"

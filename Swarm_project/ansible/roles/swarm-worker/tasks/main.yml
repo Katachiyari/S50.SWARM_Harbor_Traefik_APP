@@ -1,8 +1,29 @@
 ---
-# 1. Rejoindre le Swarm en utilisant le token stocké
+# ============================================================
+# Rôle : Swarm Worker
+# Joint le cluster Swarm en tant que worker
+# ============================================================
+
+# --- ÉTAPE 1 : Attendre que le manager soit prêt ---
+- name: Wait for manager to be ready
+  pause:
+    seconds: 5
+  tags: [swarm, join]
+
+
+# --- ÉTAPE 2 : Rejoindre le Swarm ---
 - name: Join Docker Swarm as Worker
   docker_swarm:
     state: join
     advertise_addr: "{{ ansible_host }}"
-    join_token: "{{ hostvars['swarm_token_holder']['token'] }}"
-    remote_addrs: [ '192.168.56.121:2377' ]
+    join_token: "{{ hostvars[groups['managers'][0]]['swarm_worker_token'] }}"
+    remote_addrs: ["{{ manager_ip }}:2377"]
+  register: swarm_join
+  tags: [swarm, join]
+
+
+# --- ÉTAPE 3 : Confirmation ---
+- name: Confirm worker joined
+  debug:
+    msg: "✓ Worker {{ inventory_hostname }} joined the Swarm cluster"
+  tags: [swarm, join]

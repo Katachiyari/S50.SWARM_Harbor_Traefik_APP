@@ -1,0 +1,81 @@
+---
+# ============================================================
+# Variables Globales - Docker Swarm Infrastructure
+# ============================================================
+
+# --- Projet et domaines ---
+project_name: covoit
+domain_local: app.local
+domain_traefik: "traefik.{{ domain_local }}"
+domain_portainer: "portainer.{{ domain_local }}"
+
+# --- Réseau ---
+docker_network_cidr: "192.168.56.0/24"
+swarm_network_name: traefik-net
+swarm_network_driver: overlay
+
+# --- IPs des VMs ---
+manager_ip: "192.168.56.121"
+worker1_ip: "192.168.56.122"
+worker2_ip: "192.168.56.123"
+db_ip: "192.168.56.112"
+
+# --- Database (MariaDB) ---
+db_port: 3306
+db_root_password: "rootpassword"
+db_name: "{{ project_name }}"
+db_user: "covoit_user"
+db_password: "motdepasse"
+db_data_dir: "/srv/mariadb/data"
+
+# --- Docker Registry (Harbor) ---
+harbor_address: "192.168.56.10"
+harbor_namespace: "my_app"
+app_image_name: "app-php"
+app_image_version: "1.2"
+app_image_full: "{{ harbor_address }}/{{ harbor_namespace }}/{{ app_image_name }}:{{ app_image_version }}"
+
+# --- Application PHP ---
+app_replicas: 3
+app_port: 80
+app_service_name: "{{ project_name }}_app"
+
+# --- Traefik ---
+traefik_image: "traefik:v3.4"
+traefik_service_name: "traefik_traefik"
+traefik_port_http: 80
+traefik_port_https: 443
+traefik_port_api: 8080
+traefik_replicas: 1
+traefik_cert_dir: "/vagrant/certs"
+traefik_dynamic_dir: "/vagrant/dynamic"
+traefik_extra_dir: "/vagrant/traefik-extra"
+
+# --- Portainer ---
+portainer_image: "portainer/portainer-ce:latest"
+portainer_service_name: "portainer_portainer"
+portainer_port: 9000
+portainer_agent_port: 8001
+portainer_replicas: 1
+
+# --- Chemins sur l'hôte ---
+vagrant_root: "/vagrant"
+sql_schema_path: "{{ vagrant_root }}/sql/covoit-schema.sql"
+docker_compose_dir: "{{ vagrant_root }}/docker"
+ansible_root: "/vagrant/ansible"
+
+# --- Firewall & Sécurité ---
+firewall_enabled: false  # Disabled for dev (UFW)
+docker_insecure_registries:
+  - "{{ harbor_address }}:80"
+  - "{{ harbor_address }}"
+
+# --- Flags de déploiement ---
+deploy_traefik: true
+deploy_portainer: true
+deploy_app: true
+deploy_database: true
+
+# --- Logs & Debug ---
+log_level: "INFO"
+docker_log_driver: "json-file"

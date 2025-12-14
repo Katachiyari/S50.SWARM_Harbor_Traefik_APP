@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  {{ project_name }}_app:
+    image: {{ app_image_full }}
+    networks:
+      - {{ swarm_network_name }}
+    environment:
+      DB_HOST: {{ db_ip }}
+      DB_PORT: {{ db_port }}
+      DB_NAME: {{ db_name }}
+      DB_USER: {{ db_user }}
+      DB_PASSWORD: {{ db_password }}
+    deploy:
+      mode: replicated
+      replicas: {{ app_replicas }}
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.{{ project_name }}.rule=Host(`{{ domain_local }}`)"
+        - "traefik.http.routers.{{ project_name }}.entrypoints=websecure"
+        - "traefik.http.routers.{{ project_name }}.tls=true"
+        - "traefik.http.services.{{ project_name }}.loadbalancer.server.port={{ app_port }}"
+
+networks:
+  {{ swarm_network_name }}:
+    driver: overlay
+    external: true

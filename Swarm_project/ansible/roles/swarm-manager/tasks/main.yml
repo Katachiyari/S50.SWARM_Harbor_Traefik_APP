@@ -1,37 +1,233 @@
 ---
-# 1. Initialiser le Swarm (seulement si pas déjà fait)
-- name: Init Docker Swarm
+# ============================================================
+# Rôle : Swarm Manager
+# Initialise Docker Swarm, crée les réseaux, déploie les stacks
+# ============================================================
+
+# --- ÉTAPE 1 : Init Swarm ---
+- name: Initialize Docker Swarm
   docker_swarm:
     state: present
-    advertise_addr: 192.168.56.121
+    advertise_addr: "{{ manager_ip }}"
   register: swarm_info
+  tags: [swarm, init]
 
-# 2. Récupérer le token Worker
+
+# --- ÉTAPE 2 : Récupérer le Worker Token ---
 - name: Get Worker Join Token
   command: docker swarm join-token worker -q
   register: worker_token_cmd
   changed_when: false
+  tags: [swarm, tokens]
 
-# 3. Stocker le token dans un "dummy host" pour que les workers puissent le lire
-- name: Set Worker Token Fact
+
+# --- ÉTAPE 3 : Stocker le token pour les workers ---
+- name: Set Worker Token as Fact
+  set_fact:
+    swarm_worker_token: "{{ worker_token_cmd.stdout }}"
+  tags: [swarm, tokens]
+
+
+# --- ÉTAPE 4 : Passer le token aux autres hôtes ---
+- name: Share Worker Token with Workers
   add_host:
-    name: "swarm_token_holder"
-    token: "{{ worker_token_cmd.stdout }}"
+    name: "{{ item }}"
+    swarm_worker_token: "{{ worker_token_cmd.stdout }}"
+  loop: "{{ groups['workers'] }}"
+  tags: [swarm, tokens]
 
-# 4. Create Traefik extra directory
-- name: Create Traefik extra directory
+
+# --- ÉTAPE 5 : Créer le réseau overlay Traefik ---
+- name: Create traefik overlay network
+  command: >
+    docker network create 
+    --driver overlay 
+    --attachable 
+    {{ swarm_network_name }}
+  register: network_create
+  failed_when: 
+    - network_create.rc != 0
+    - '"already exists" not in network_create.stderr'
+  changed_when: '"already exists" not in network_create.stderr'
+  tags: [swarm, network]
+
+
+- name: Confirm traefik network exists
+  command: docker network ls --filter name={{ swarm_network_name }}
+  register: network_check
+  changed_when: false
+  tags: [swarm, network]
+
+
+# --- ÉTAPE 6 : Créer les répertoires pour Traefik ---
+- name: Create Traefik directories
   file:
-    path: /vagrant/traefik-extra
+    path: "{{ item }}"
     state: directory
     mode: '0755'
+  loop:
+    - "{{ traefik_cert_dir }}"
+    - "{{ traefik_dynamic_dir }}"
+    - "{{ traefik_extra_dir }}"
+  tags: [traefik, setup]
 
-# 5. Create Traefik app config from template
-- name: Create Traefik app config from template
+
+# --- ÉTAPE 7 : Créer certificat auto-signé (optionnel, pour HTTPS local) ---
+- name: Check if self-signed cert exists
+  stat:
+    path: "{{ traefik_cert_dir }}/local.crt"
+  register: cert_check
+  tags: [traefik, cert]
+
+
+- name: Generate self-signed certificate (si absent)
+  shell: |
+    mkdir -p {{ traefik_cert_dir }}
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout {{ traefik_cert_dir }}/local.key \
+      -out {{ traefik_cert_dir }}/local.crt \
+      -subj "/CN=*.{{ domain_local }}"
+  when: not cert_check.stat.exists
+  tags: [traefik, cert]
+
+
+# --- ÉTAPE 8 : Créer le fichier TLS dynamique pour Traefik ---
+- name: Create Traefik TLS dynamic config
+  copy:
+    content: |
+      tls:
+        certificates:
+          - certFile: {{ traefik_cert_dir }}/local.crt
+            keyFile: {{ traefik_cert_dir }}/local.key
+    dest: "{{ traefik_dynamic_dir }}/tls.yaml"
+    mode: '0644'
+  tags: [traefik, config]
+
+# --- ÉTAPE 8b : Créer la config HTTP pour l'app ---
+- name: Create Traefik dynamic config for app
   template:
     src: traefik-app.yml.j2
-    dest: /vagrant/traefik-extra/app.yml
+    dest: "{{ traefik_dynamic_dir }}/app.yml"
     mode: '0644'
-  vars:
-    app_domain: app.local
-    app_service_name: app_app
-    app_port: 80
+  tags: [traefik, config, app]
+
+# --- ÉTAPE 8c : Créer la config HTTP pour Harbor ---
+- name: Create Traefik dynamic config for Harbor
+  template:
+    src: traefik-harbor.yml.j2
+    dest: "{{ traefik_dynamic_dir }}/harbor.yml"
+    mode: '0644'
+  tags: [traefik, config, harbor]
+
+# --- ÉTAPE 8d : Créer la config HTTP pour le dashboard ---
+- name: Create Traefik dynamic config for dashboard
+  template:
+    src: traefik-dashboard.yml.j2
+    dest: "{{ traefik_dynamic_dir }}/dashboard.yml"
+    mode: '0644'
+  tags: [traefik, config, dashboard]
+
+# --- ÉTAPE 9 : Créer le fichier docker-compose pour Traefik ---
+- name: Create Traefik docker-compose from template
+  template:
+    src: traefik-compose.yml.j2
+    dest: /tmp/traefik-stack.yml
+    mode: '0644'
+  tags: [traefik, deploy]
+
+
+# --- ÉTAPE 10 : Déployer la stack Traefik ---
+- name: Deploy Traefik stack
+  command: >
+    docker stack deploy 
+    -c /tmp/traefik-stack.yml 
+    traefik
+  register: traefik_deploy
+  changed_when: "('Updating' in traefik_deploy.stdout) or ('Creating' in traefik_deploy.stdout)"
+  tags: [traefik, deploy]
+
+
+- name: Wait for Traefik to be ready
+  pause:
+    seconds: 5
+  tags: [traefik, deploy]
+
+
+# --- ÉTAPE 11 : Créer la stack Portainer ---
+- name: Create Portainer docker-compose from template
+  template:
+    src: portainer-stack.yml.j2
+    dest: /tmp/portainer-stack.yml
+    mode: '0644'
+  tags: [portainer, deploy]
+
+
+- name: Deploy Portainer stack
+  command: >
+    docker stack deploy 
+    -c /tmp/portainer-stack.yml 
+    portainer
+  register: portainer_deploy
+  changed_when: "('Updating' in portainer_deploy.stdout) or ('Creating' in portainer_deploy.stdout)"
+  tags: [portainer, deploy]
+
+
+# --- ÉTAPE 12 : Créer la stack Application PHP ---
+- name: Create App docker-compose from template
+  template:
+    src: app-stack.yml.j2
+    dest: /tmp/app-stack.yml
+    mode: '0644'
+  tags: [app, deploy]
+
+
+- name: Deploy Application stack
+  command: >
+    docker stack deploy 
+    -c /tmp/app-stack.yml 
+    {{ project_name }}
+  register: app_deploy
+  changed_when: "('Updating' in app_deploy.stdout) or ('Creating' in app_deploy.stdout)"
+  tags: [app, deploy]
+
+
+# --- ÉTAPE 13 : Validation finale ---
+- name: List all deployed services
+  command: docker service ls
+  register: service_list
+  changed_when: false
+  tags: [validation]
+
+
+- name: Display deployed services
+  debug:
+    msg: "{{ service_list.stdout_lines }}"
+  tags: [validation]
+
+
+- name: Check if Traefik service is running
+  command: docker service ls --filter name=traefik_traefik -q
+  register: traefik_status
+  changed_when: false
+  tags: [validation]
+
+
+- name: Confirm Traefik deployment
+  debug:
+    msg: "✓ Traefik deployed successfully"
+  when: traefik_status.stdout != ""
+  tags: [validation]
+
+
+- name: Check if App service is running
+  command: docker service ls --filter name="{{ project_name }}_app" -q
+  register: app_status
+  changed_when: false
+  tags: [validation]
+
+
+- name: Confirm App deployment
+  debug:
+    msg: "✓ Application deployed successfully"
+  when: app_status.stdout != ""
+  tags: [validation]

@@ -1,11 +1,12 @@
 http:
   routers:
     app:
-      rule: "Host(`{{ app_domain }}`)"
+      rule: "Host(`{{ domain_local }}`)"
       service: app
       entryPoints:
-        - web
-  
+        - websecure
+      tls: {}
+
   services:
     app:
       loadBalancer:

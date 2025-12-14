@@ -1,7 +1,7 @@
 http:
   routers:
     harbor:
-      rule: Host(`harbor.app.local`)
+      rule: "Host(`harbor.{{ domain_local }}`)"
       entryPoints:
         - websecure
       service: harbor
@@ -11,4 +11,4 @@ http:
     harbor:
       loadBalancer:
         servers:
-          - url: "http://192.168.56.10"
+          - url: "http://{{ db_ip }}:8080"

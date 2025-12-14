@@ -1,11 +1,18 @@
 ---
-# 1. Mise à jour du cache APT
+# ============================================================
+# Rôle : Common
+# Installer Docker + dépendances sur toutes les VMs
+# ============================================================
+
+# --- ÉTAPE 1 : Mise à jour du cache APT ---
 - name: Update apt cache
   apt:
     update_cache: yes
     cache_valid_time: 3600
+  tags: [always]
 
-# 2. Installation des prérequis
+
+# --- ÉTAPE 2 : Installation des prérequis ---
 - name: Install dependencies
   apt:
     name:
@@ -16,27 +23,37 @@
       - python3-pip
       - virtualenv
       - python3-setuptools
+      - openssl
+      - apache2-utils
     state: present
+  tags: [common, deps]
 
-# 3. Ajout de la clé GPG Docker
+
+# --- ÉTAPE 3 : Ajout de la clé GPG Docker ---
 - name: Add Docker GPG apt Key
   apt_key:
     url: https://download.docker.com/linux/ubuntu/gpg
     state: present
+  tags: [common, docker]
 
-# 4. Ajout du dépôt Docker
+
+# --- ÉTAPE 4 : Ajout du dépôt Docker ---
 - name: Add Docker Repository
   apt_repository:
     repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
     state: present
     filename: docker
+  tags: [common, docker]
 
-# 5. Mise à jour après ajout du dépôt
+
+# --- ÉTAPE 5 : Mise à jour après ajout du dépôt ---
 - name: Update apt cache after adding Docker repo
   apt:
     update_cache: yes
+  tags: [common, docker]
 
-# 6. Installation de Docker CE
+
+# --- ÉTAPE 6 : Installation de Docker CE ---
 - name: Install Docker
   apt:
     name:
@@ -44,33 +61,77 @@
       - docker-ce-cli
       - containerd.io
     state: present
+  tags: [common, docker]
 
-# 7. Installation du SDK Python Docker
+
+# --- ÉTAPE 7 : Installation du SDK Python Docker ---
 - name: Install Docker SDK for Python
   pip:
     name: docker
     state: present
+  tags: [common, docker]
 
-# 8. Ajout de l'utilisateur vagrant au groupe docker
+
+# --- ÉTAPE 8 : Ajout de l'utilisateur vagrant au groupe docker ---
 - name: Add user vagrant to docker group
   user:
     name: vagrant
     groups: docker
     append: yes
+  tags: [common, docker]
 
-# 9. Configuration du Insecure Registry (Harbor HTTP)
+
+# --- ÉTAPE 9 : Configuration du Insecure Registry (Harbor HTTP) ---
+- name: Create docker daemon config directory
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+  tags: [common, docker, registry]
+
+
 - name: Configure Docker daemon for insecure registry
   copy:
     content: |
       {
-        "insecure-registries" : ["192.168.56.10:80", "192.168.56.10"]
+        "insecure-registries": {{ docker_insecure_registries | to_json }},
+        "log-driver": "{{ docker_log_driver }}",
+        "storage-driver": "overlay2"
       }
     dest: /etc/docker/daemon.json
+    mode: '0644'
   notify: Restart Docker
+  tags: [common, docker, registry]
 
-# 10. Désactivation du pare-feu pour éviter les blocages Swarm/DB
-- name: Disable UFW
+
+# --- ÉTAPE 10 : Démarrage du service Docker ---
+- name: Ensure Docker service is started and enabled
+  service:
+    name: docker
+    state: started
+    enabled: yes
+  tags: [common, docker]
+
+
+# --- ÉTAPE 11 : Configuration du firewall (optionnel) ---
+- name: Disable UFW firewall (dev environment)
   service:
     name: ufw
     state: stopped
     enabled: no
+  when: not firewall_enabled
+  tags: [common, firewall]
+
+
+# --- ÉTAPE 12 : Vérifier Docker ---
+- name: Test Docker installation
+  shell: docker --version
+  register: docker_version
+  changed_when: false
+  tags: [common, validate]
+
+
+- name: Display Docker version
+  debug:
+    msg: "✓ {{ docker_version.stdout }}"
+  tags: [common, validate]

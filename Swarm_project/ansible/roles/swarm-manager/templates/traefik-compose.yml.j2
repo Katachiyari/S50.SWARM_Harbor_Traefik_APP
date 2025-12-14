@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: {{ traefik_image }}
+    networks:
+      - {{ swarm_network_name }}
+    ports:
+      - target: {{ traefik_port_http }}
+        published: {{ traefik_port_http }}
+        protocol: tcp
+        mode: host
+      - target: {{ traefik_port_https }}
+        published: {{ traefik_port_https }}
+        protocol: tcp
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - {{ traefik_cert_dir }}:/certs:ro
+      - {{ traefik_dynamic_dir }}:/dynamic:ro
+    command:
+      - "--entrypoints.web.address=:{{ traefik_port_http }}"
+      - "--entrypoints.websecure.address=:{{ traefik_port_https }}"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
+      - "--providers.swarm.exposedbydefault=false"
+      - "--providers.swarm.network={{ swarm_network_name }}"
+      - "--providers.file.directory=/dynamic"
+      - "--providers.file.watch=true"
+      - "--api.dashboard=true"
+      - "--log.level={{ log_level }}"
+      - "--accesslog=true"
+      - "--metrics.prometheus=true"
+    deploy:
+      mode: replicated
+      replicas: {{ traefik_replicas }}
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dashboard.rule=Host(`{{ domain_traefik }}`)"
+        - "traefik.http.routers.dashboard.entrypoints=websecure"
+        - "traefik.http.routers.dashboard.tls=true"
+        - "traefik.http.services.traefik.loadbalancer.server.port={{ traefik_port_api }}"
+
+networks:
+  {{ swarm_network_name }}:
+    driver: overlay
+    external: true

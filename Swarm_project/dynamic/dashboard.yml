@@ -1,0 +1,8 @@
+http:
+  routers:
+    traefik:
+      rule: "Host(`traefik.app.local`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      tls: {}

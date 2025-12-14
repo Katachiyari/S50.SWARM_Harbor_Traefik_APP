@@ -1,0 +1,8 @@
+http:
+  routers:
+    traefik:
+      rule: "Host(`{{ domain_traefik }}`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      tls: {}
