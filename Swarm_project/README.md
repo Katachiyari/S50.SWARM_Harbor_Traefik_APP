@@ -1,11 +1,11 @@
-# 🚗 Plateforme Covoiturage – Docker Swarm / Traefik / MariaDB
+# 🚗 Plateforme Covoiturage – Docker Swarm / Traefik / MariaDB / Harbor
 
-Déploiement d’une application PHP de covoiturage sur un cluster **Docker Swarm** avec :
+Déploiement d’une application PHP de covoiturage sur un cluster **Docker Swarm** orchestré via **Ansible**.
 
-- 🐘 **MariaDB** hors Swarm
-- 🌐 **Traefik** comme reverse‑proxy
-- 📦 **Harbor** comme registry privé
-- 📊 **Portainer** pour l’administration du cluster
+- 🐘 MariaDB hors Swarm (VM dédiée)
+- 🌐 Traefik en reverse‑proxy (HTTPS `websecure`)
+- 📦 Harbor (registry privé HTTP, backend `http://192.168.56.10`)
+- 📊 Portainer pour l’administration du cluster
 
 ***
 
@@ -19,7 +19,7 @@ Déploiement d’une application PHP de covoiturage sur un cluster **Docker Swar
     - `traefik-net` : réseau overlay pour Traefik + services exposés
 - 🧩 **Services**
     - `app_covoit` : app PHP/Apache (3 replicas) connectée à MariaDB
-    - `traefik` : reverse‑proxy HTTP (80) + dashboard (8080)
+    - `traefik` : reverse‑proxy HTTPS (443) + dashboard via `api@internal`
     - `portainer` : interface Web de gestion Docker Swarm
     - `mariadb` : base de données sur `dbSrv1`
     - `harbor` : registry Docker (HTTP, insecure)
@@ -51,7 +51,7 @@ docker/
     docker-compose.yml
     portainer-stack.yml
   traefik/
-    docker-compose.yml
+    docker-compose.yml       # stack Traefik (exemple manuel)
   templates/
     traefik-app.yml.j2
   tests/
@@ -60,7 +60,7 @@ sql/
   covoit-schema.sql
 traefik-extra/
   app.yml
-  harbor.yml
+  harbor.yml                 # routes statiques supplémentaires (optionnel)
 Vagrantfile
 docker-compose.yml   # Stack app (déploiement manuel)
 ```
@@ -70,14 +70,15 @@ docker-compose.yml   # Stack app (déploiement manuel)
 
 ## ⚙️ Prérequis
 
-- Vagrant + VirtualBox installés
-- Accès au registry Harbor depuis les nœuds Swarm
+- Vagrant + VirtualBox
+- Accès HTTP au registry Harbor depuis les nœuds Swarm
 - Entrées `/etc/hosts` sur la machine cliente, par exemple :
 
 ```txt
 192.168.56.121  app.local
-192.168.56.121  portainer.local
-192.168.56.121  harbor.local
+192.168.56.121  portainer.app.local
+192.168.56.121  traefik.app.local
+192.168.56.121  harbor.app.local
 ```
 
 
@@ -114,82 +115,36 @@ cd ansible
 ansible-playbook -i inventory.ini playbook.yml
 ```
 
-Le playbook :
-
-- installe Docker sur les 4 VMs (rôle `common`)
-- déploie MariaDB sur `dbSrv1` (rôle `database`)
-- initialise le Swarm + réseaux + Traefik + Portainer (rôle `swarm-manager`)
-- fait rejoindre les workers au cluster (rôle `swarm-worker`)[6]
+Le playbook installe Docker, configure l’insecure registry (Harbor), déploie MariaDB, init Swarm, déploie Traefik/Portainer et l’app.
 
 ***
 
 ### 3️⃣ Application PHP \& registry
 
-#### 🐳 Build \& push de l’image
+#### 🐳 Build & push de l’image
 
-Sur `swarm-mgr1` :
+Sur `swarm-mgr1` (Harbor doit être up) :
 
 ```bash
 cd /vagrant/app-php
-docker build -t harbor.local/my_app/app-php:1.2 .
-docker push harbor.local/my_app/app-php:1.2
+docker build -t 192.168.56.10/my_app/app-php:1.2 .
+docker push 192.168.56.10/my_app/app-php:1.2
 ```
 
 - Base : PHP 8.1 + Apache + extensions PDO MySQL
-- Code : dossier `app-php/src`
+- Code : `app-php/src`
 
 
 #### 🐘 MariaDB (dbSrv1)
 
-Sur `dbSrv1` :
-
-```bash
-cd /vagrant/docker/database
-docker-compose up -d
-docker exec -i mariadb mysql -u covoit_user -pmotdepasse covoit < /vagrant/sql/covoit-schema.sql
-```
-
-La base `covoit` et ses tables sont créées à partir de `sql/covoit-schema.sql`.
+Déployée par Ansible sur `dbSrv1` (conteneur `mariadb`), schéma importé depuis `sql/covoit-schema.sql`.
 
 ***
 
-### 4️⃣ Traefik \& Portainer
+### 4️⃣ Traefik \& Portainer (déployés par Ansible)
 
-#### 🌐 Traefik (stack Swarm)
-
-```bash
-cd /vagrant/docker/traefik
-docker stack deploy -c docker-compose.yml traefik
-docker service ps traefik_traefik
-```
-
-Points clés :
-
-```yaml
-command:
-  - "--entrypoints.web.address=0.0.0.0:80"
-  - "--entrypoints.traefik.address=:8080"
-  - "--providers.docker=true"
-  - "--providers.docker.swarmMode=true"
-  - "--providers.docker.exposedbydefault=false"
-  - "--providers.docker.endpoint=unix:///var/run/docker.sock"
-  - "--providers.docker.network=traefik-net"
-networks:
-  traefik-net:
-    external: true
-```
-
-Dashboard : `http://192.168.56.121:8080`[1]
-
-#### 📊 Portainer
-
-```bash
-cd /vagrant/docker/portainer
-docker stack deploy -c portainer-stack.yml portainer
-```
-
-- Déployé sur `swarm-mgr1` via `placement`
-- Socket Docker monté, volume persistant
+- Traefik écoute en 80/443, router dashboard via `api@internal` : `https://traefik.app.local/dashboard/`
+- Portainer exposé via Traefik : `https://portainer.app.local`
 
 ***
 
