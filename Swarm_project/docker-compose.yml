@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   covoit:
-    image: harbor.local/my_app/app-php:1.2
+    image: 192.168.56.10/my_app/app-php:1.2
     networks:
       - traefik-net
     deploy:
@@ -10,7 +10,8 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.covoit.rule=Host(`app.local`)"
-        - "traefik.http.routers.covoit.entrypoints=web"
+        - "traefik.http.routers.covoit.entrypoints=websecure"
+        - "traefik.http.routers.covoit.tls=true"
         - "traefik.http.services.covoit.loadbalancer.server.port=80"
         - "traefik.docker.network=traefik-net"
     environment:

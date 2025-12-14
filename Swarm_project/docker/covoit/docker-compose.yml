@@ -2,13 +2,14 @@ version: "3.8"
 
 services:
   covoit:
-    image: harbor.local/my_app/app-covoit:1.0
+    image: 192.168.56.10/my_app/app-covoit:1.0
     networks:
       - traefik-net
     labels:
       - traefik.enable=true
       - traefik.http.routers.covoit.rule=Host(`covoit.local`)
-      - traefik.http.routers.covoit.entrypoints=web
+      - traefik.http.routers.covoit.entrypoints=websecure
+      - traefik.http.routers.covoit.tls=true
       - traefik.http.services.covoit.loadbalancer.server.port=80
     deploy:
       replicas: 1

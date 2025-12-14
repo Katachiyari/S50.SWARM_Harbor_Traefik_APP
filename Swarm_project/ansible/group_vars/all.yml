@@ -29,6 +29,7 @@ db_password: "motdepasse"
 db_data_dir: "/srv/mariadb/data"
 
 # --- Docker Registry (Harbor) ---
+# Harbor est exposé en HTTP sur 192.168.56.10:80 (insecure)
 harbor_address: "192.168.56.10"
 harbor_namespace: "my_app"
 app_image_name: "app-php"
@@ -67,8 +68,8 @@ ansible_root: "/vagrant/ansible"
 # --- Firewall & Sécurité ---
 firewall_enabled: false  # Disabled for dev (UFW)
 docker_insecure_registries:
-  - "{{ harbor_address }}:80"
   - "{{ harbor_address }}"
+  - "{{ harbor_address }}:80"
 
 # --- Flags de déploiement ---
 deploy_traefik: true
